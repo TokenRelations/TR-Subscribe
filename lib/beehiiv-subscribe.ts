@@ -74,7 +74,7 @@ function buildCustomFields(payload: SubscribePayload): Array<{ name: string; val
   return out
 }
 
-export type BeehiivSyncResult = { ok: true } | { ok: false; status: number; detail: unknown }
+export type BeehiivSyncResult = { ok: true; duplicate?: boolean } | { ok: false; status: number; detail: unknown }
 
 export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promise<BeehiivSyncResult> {
   const apiKey = process.env.BEEHIIV_API_KEY?.trim()

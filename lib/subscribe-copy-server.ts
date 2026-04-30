@@ -1,12 +1,12 @@
-import { DEFAULT_SUBSCRIBE_COPY, type SubscribePageCopy } from "@/lib/subscribe-page-config"
+import { DEFAULT_SUBSCRIBE_PAGE_CONFIG, type SubscribePageConfig } from "@/lib/subscribe-page-config"
 
 function pick(key: string, fallback: string): string {
   const v = process.env[key]?.trim()
   return v && v.length > 0 ? v : fallback
 }
 
-export function getSubscribePageCopy(): SubscribePageCopy {
-  const d = DEFAULT_SUBSCRIBE_COPY
+export function getSubscribePageConfig(): SubscribePageConfig {
+  const d = DEFAULT_SUBSCRIBE_PAGE_CONFIG
   return {
     heroTitle: pick("NEXT_PUBLIC_HERO_TITLE", d.heroTitle),
     heroSubtitle: pick("NEXT_PUBLIC_HERO_SUBTITLE", d.heroSubtitle),
@@ -22,7 +22,7 @@ export function getSubscribePageCopy(): SubscribePageCopy {
 }
 
 export function getEmbedHeaderCopy(): { title: string; subtitle: string } {
-  const d = DEFAULT_SUBSCRIBE_COPY
+  const d = DEFAULT_SUBSCRIBE_PAGE_CONFIG
   return {
     title: pick("NEXT_PUBLIC_EMBED_TITLE", d.heroTitle),
     subtitle: pick("NEXT_PUBLIC_EMBED_SUBTITLE", d.heroSubtitle),

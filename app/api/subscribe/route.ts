@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await syncSubscriberToBeehiiv(apiKey, payload)
+    const result = await syncSubscriberToBeehiiv(payload)
 
     if (result.ok) {
       return NextResponse.json({

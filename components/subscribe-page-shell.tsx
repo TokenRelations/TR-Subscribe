@@ -1,8 +1,8 @@
 import { NewsletterSubscriptionForm } from "@/components/newsletter-subscription-form"
-import { getEmbedHeaderCopy, getSubscribePageCopy } from "@/lib/subscribe-copy-server"
+import { getEmbedHeaderCopy, getSubscribePageConfig } from "@/lib/subscribe-copy-server"
 
 export function SubscribePageShell({ variant }: { variant: "full" | "embed" }) {
-  const copy = getSubscribePageCopy()
+  const copy = getSubscribePageConfig()
   const logoOrigin = process.env.NEXT_PUBLIC_LOGO_CDN_ORIGIN?.trim() || undefined
 
   const form = (
@@ -13,7 +13,7 @@ export function SubscribePageShell({ variant }: { variant: "full" | "embed" }) {
       successBody={copy.successBody}
       ctaText={copy.ctaText}
       privacyText={copy.privacyText}
-      logoOrigin={logoOrigin}
+      logoCdnOrigin={logoOrigin}
     />
   )
 
