@@ -16,7 +16,6 @@ export function getSubscribePageConfig(): SubscribePageConfig {
     successBody: d.successBody,
     ctaText: d.ctaText,
     privacyText: d.privacyText,
-    roles: d.roles,
     networks: d.networks,
   }
 }

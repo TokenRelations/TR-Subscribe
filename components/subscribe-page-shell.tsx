@@ -7,7 +7,6 @@ export function SubscribePageShell({ variant }: { variant: "full" | "embed" }) {
 
   const form = (
     <NewsletterSubscriptionForm
-      roles={copy.roles}
       networks={copy.networks}
       successTitle={copy.successTitle}
       successBody={copy.successBody}

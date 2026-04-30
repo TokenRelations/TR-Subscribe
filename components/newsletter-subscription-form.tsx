@@ -17,13 +17,6 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { resolveNetworkLogoSrc, type SubscribeNetworkOption } from "@/lib/subscribe-page-config"
 
@@ -51,31 +44,19 @@ const DEFAULT_NETWORKS: SubscribeNetworkOption[] = [
   { name: "Tokenization" },
 ]
 
-const DEFAULT_ROLES = [
-  "C-Suite",
-  "Developer",
-  "FinTech",
-  "Founder",
-  "Investor / Fund",
-  "Protocol Team",
-  "Researcher / Analyst",
-  "Trader",
-]
-
 const FormSchema = z.object({
   firstName: z.string().min(1, { message: "First name is required." }),
   lastName: z.string().min(1, { message: "Last name is required." }),
   email: z.string().email({
     message: "Please enter a valid business email address.",
   }),
-  role: z.string().min(1, { message: "Please select your role." }),
+  company: z.string().min(1, { message: "Company is required." }),
   networks: z.array(z.string()).refine((value) => value.length > 0, {
     message: "You have to select at least one network.",
   }),
 })
 
 interface NewsletterSubscriptionFormProps {
-  roles?: string[]
   networks?: SubscribeNetworkOption[]
   successTitle?: string
   successBody?: string
@@ -86,7 +67,6 @@ interface NewsletterSubscriptionFormProps {
 }
 
 export function NewsletterSubscriptionForm({
-  roles = DEFAULT_ROLES,
   networks = DEFAULT_NETWORKS,
   successTitle = "You're in.",
   successBody = "Welcome to a community of 130,000+ readers across venture capital, institutional finance, protocol teams, and market professionals.",
@@ -104,7 +84,7 @@ export function NewsletterSubscriptionForm({
       firstName: "",
       lastName: "",
       email: "",
-      role: "",
+      company: "",
       networks: [],
     },
   })
@@ -121,7 +101,7 @@ export function NewsletterSubscriptionForm({
           first_name: data.firstName,
           last_name: data.lastName,
           email: data.email,
-          role: data.role,
+          company: data.company,
           subscribed_networks: data.networks,
         }),
       })
@@ -222,24 +202,13 @@ export function NewsletterSubscriptionForm({
 
             <FormField
               control={form.control}
-              name="role"
+              name="company"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>What is your role?</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || undefined}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select your role" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {roles.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {role}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Company</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Acme Inc." {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

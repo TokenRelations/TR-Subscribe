@@ -66,7 +66,7 @@ export type SubscribePayload = {
   email: string
   first_name: string | null
   last_name: string | null
-  role: string | null
+  company: string
   subscribed_networks: string[]
 }
 
@@ -103,11 +103,7 @@ function buildBeehiivCustomFields(payload: SubscribePayload): BeehiivCustomField
     out.push({ name: "Subscriber Name", value: subscriberName })
   }
 
-  // Beehiiv has no separate “Role” field; store the form role in the free-text Company slot.
-  const role = payload.role?.trim()
-  if (role) {
-    out.push({ name: "Company", value: role })
-  }
+  out.push({ name: "Company", value: payload.company.trim() })
 
   // `Events` is not collected on this form; keep a stable default for new + duplicate flows.
   out.push({ name: "Events", value: false })

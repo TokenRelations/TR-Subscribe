@@ -12,7 +12,6 @@ export interface SubscribePageConfig {
   successBody: string
   ctaText: string
   privacyText: string
-  roles: string[]
   networks: SubscribeNetworkOption[]
 }
 
@@ -20,22 +19,12 @@ export const DEFAULT_SUBSCRIBE_PAGE_CONFIG: SubscribePageConfig = {
   heroTitle: "Stay Ahead as Markets Move",
   heroSubtitle: "Subscribe to receive investor updates and insights directly in your inbox.",
   formTitle: "Newsletter Sign Up",
-  formSubtitle: "Get updates tailored to your role and the ecosystems you care about.",
+  formSubtitle: "Get updates tailored to your company and the ecosystems you care about.",
   successTitle: "You're in.",
   successBody:
     "Welcome to a community of 130,000+ readers across venture capital, institutional finance, protocol teams, and market professionals.",
   ctaText: "Subscribe",
   privacyText: "We respect your privacy. Unsubscribe at any time.",
-  roles: [
-    "C-Suite",
-    "Developer",
-    "FinTech",
-    "Founder",
-    "Investor / Fund",
-    "Protocol Team",
-    "Researcher / Analyst",
-    "Trader",
-  ],
   networks: [
     { name: "Aptos", logo: "/Aptos.png" },
     { name: "Avalanche", logo: "/Avalanche_Logomark_Red.svg" },

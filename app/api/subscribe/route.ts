@@ -8,7 +8,7 @@ const bodySchema = z.object({
   subscribed_networks: z.array(z.string()).min(1, "Select at least one network."),
   first_name: z.string().nullable().optional(),
   last_name: z.string().nullable().optional(),
-  role: z.string().nullable().optional(),
+  company: z.string().trim().min(1, "Company is required."),
 })
 
 export async function POST(request: Request) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     subscribed_networks: parsed.data.subscribed_networks,
     first_name: parsed.data.first_name ?? null,
     last_name: parsed.data.last_name ?? null,
-    role: parsed.data.role ?? null,
+    company: parsed.data.company,
   }
 
   try {
