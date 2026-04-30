@@ -1,9 +1,30 @@
 const BEEHIIV_API_URL = "https://api.beehiiv.com/v2"
 
 const VALID_BEEHIIV_SEGMENTS = new Set([
-  "Token Relations", "Solana", "Sei", "Ripple", "Polygon", "Optimism",
-  "Movement Network", "Mezo", "Matchain", "Injective", "Hedera", "Flow",
-  "DeCharge", "Core DAO", "Chainlink", "Avalanche", "Aptos", "Animecoin"
+  "Token Relations",
+  "Solana",
+  "Sei",
+  "Ripple",
+  "Polygon",
+  "Optimism",
+  "Movement Network",
+  "Mezo",
+  "Matchain",
+  "Injective",
+  "Hedera",
+  "Flow",
+  "DeCharge",
+  "Core DAO",
+  "Chainlink",
+  "Avalanche",
+  "Aptos",
+  "Animecoin",
+  "Chiliz",
+  "DeFi",
+  "Stablecoins",
+  "The Market Runup",
+  "Talking Tokens",
+  "Tokenization",
 ])
 
 export type SubscribePayload = {
@@ -67,8 +88,11 @@ function buildCustomFields(payload: SubscribePayload): Array<{ name: string; val
         segmentsToPush.add("Token Relations")
       }
     }
-    for (const segment of segmentsToPush) {
-      out.push({ name: networksField, value: segment })
+    // One custom_field row per name — Beehiiv rejects duplicate `name` entries.
+    // Value: comma-separated string (works for string-type fields); arrays are also allowed per API.
+    const values = Array.from(segmentsToPush)
+    if (values.length > 0) {
+      out.push({ name: networksField, value: values.join(", ") })
     }
   }
   return out
@@ -104,17 +128,9 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
 
   if (custom_fields.length > 0) requestBody.custom_fields = custom_fields
 
-  if (payload.subscribed_networks && payload.subscribed_networks.length > 0) {
-    const mappedTags = new Set<string>()
-    for (const network of payload.subscribed_networks) {
-      if (VALID_BEEHIIV_SEGMENTS.has(network)) {
-        mappedTags.add(network)
-      } else {
-        mappedTags.add("Token Relations")
-      }
-    }
-    requestBody.tags = Array.from(mappedTags)
-  }
+  // Do NOT send `tags` here — Beehiiv "Create subscription" (POST .../subscriptions)
+  // OpenAPI schema does not include `tags` on the request. Sending it causes 400s
+  // that were previously surfaced as 502 due to status mapping below.
 
   const utm = process.env.BEEHIIV_UTM_SOURCE?.trim()
   if (utm) requestBody.utm_source = utm
@@ -142,7 +158,10 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
     body: JSON.stringify(requestBody),
   })
 
-  if (res.ok) return { ok: true }
+  if (res.ok) {
+    await postSubscribeMirrorWebhook(payload)
+    return { ok: true }
+  }
 
   const detail = await safeJson(res)
   const ignore = process.env.BEEHIIV_IGNORE_ERRORS === "true"
@@ -151,13 +170,35 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
     return { ok: true }
   }
 
-  // Map upstream errors to 502/503 for operators
+  if (isLikelyDuplicateResponse(res.status, detail)) {
+    await postSubscribeMirrorWebhook(payload)
+    return { ok: true, duplicate: true }
+  }
+
   const upstreamStatus = res.status
   const status =
-    upstreamStatus === 429 ? 503 : upstreamStatus >= 500 ? 502 : 502
+    upstreamStatus === 429
+      ? 503
+      : upstreamStatus >= 500
+        ? 502
+        : upstreamStatus >= 400
+          ? upstreamStatus
+          : 502
 
   console.error("Beehiiv create subscription failed:", upstreamStatus, detail)
   return { ok: false, status, detail: { upstreamStatus, ...((typeof detail === "object" && detail) || { detail }) } }
+}
+
+function isLikelyDuplicateResponse(status: number, body: unknown): boolean {
+  if (status === 409) return true
+  const s = JSON.stringify(body).toLowerCase()
+  if (status !== 400) return false
+  return (
+    s.includes("already") ||
+    s.includes("exists") ||
+    s.includes("duplicate") ||
+    s.includes("subscribed")
+  )
 }
 
 export async function postSubscribeMirrorWebhook(body: unknown): Promise<void> {
