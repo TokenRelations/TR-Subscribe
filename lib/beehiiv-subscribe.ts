@@ -1,18 +1,16 @@
 const BEEHIIV_API_URL = "https://api.beehiiv.com/v2"
 
 /**
- * Beehiiv "Create subscription" does not take segment IDs.
+ * Maps the subscribe form to your publication’s custom fields using only
+ * `BEEHIIV_API_KEY` + `BEEHIIV_PUBLICATION_ID` (field names match the Beehiiv dashboard).
  *
- * Interests are often modeled as:
- * - **Boolean custom fields** per network (your dashboard: "Solana" True/False, etc.)
- * - and/or **tags** + dynamic segments (separate POST …/subscriptions/{id}/tags).
- *
- * Set `BEEHIIV_INTERESTS_AS_BOOLEAN_CUSTOM_FIELDS=true` and field names must match
- * Beehiiv exactly (see `DEFAULT_BOOLEAN_INTEREST_FIELD_NAMES` or env override).
+ * Text: Company, Subscriber Name, Location
+ * List: Newsletters (multi) — selected chip names as values (must match list options in Beehiiv)
+ * True/False: Events + one field per network below
  */
 
-/** Exact Beehiiv custom field names (type True/False) from your publication. */
-const DEFAULT_BOOLEAN_INTEREST_FIELD_NAMES = [
+/** Exact Beehiiv custom field names (True/False), excluding `Events`. */
+const BOOLEAN_NETWORK_FIELD_NAMES = [
   "Token Relations",
   "DeCharge",
   "Aptos",
@@ -34,32 +32,21 @@ const DEFAULT_BOOLEAN_INTEREST_FIELD_NAMES = [
   "Movement Network",
 ] as const
 
-const VALID_BEEHIIV_SEGMENTS = new Set([
-  "Token Relations",
-  "Solana",
-  "Sei",
-  "Ripple",
-  "Polygon",
-  "Optimism",
-  "Movement Network",
-  "Mezo",
-  "Matchain",
-  "Injective",
-  "Hedera",
-  "Flow",
-  "DeCharge",
-  "Core DAO",
-  "Chainlink",
-  "Avalanche",
-  "Aptos",
-  "Animecoin",
-  "Chiliz",
-  "DeFi",
-  "Stablecoins",
-  "The Market Runup",
-  "Talking Tokens",
-  "Tokenization",
-])
+const BOOLEAN_FIELD_BY_NORMALIZED = new Map<string, string>()
+for (const name of BOOLEAN_NETWORK_FIELD_NAMES) {
+  BOOLEAN_FIELD_BY_NORMALIZED.set(name.trim().toLowerCase(), name)
+}
+
+/**
+ * Form chip labels (lowercase) that should flip a boolean whose dashboard name differs.
+ * Keys: normalized chip text; values: exact Beehiiv field name.
+ */
+const BOOLEAN_CHIP_ALIASES: Record<string, string> = {
+  root: "The Root Network",
+  trn: "The Root Network",
+  "the root network": "The Root Network",
+  "root network": "The Root Network",
+}
 
 export type SubscribePayload = {
   email: string
@@ -71,33 +58,59 @@ export type SubscribePayload = {
 
 export type BeehiivCustomFieldRow = { name: string; value: string | string[] | boolean }
 
-function booleanInterestFieldNames(): string[] {
-  const raw = process.env.BEEHIIV_BOOLEAN_NETWORK_FIELD_NAMES?.trim()
-  if (raw) {
-    return raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-  }
-  return [...DEFAULT_BOOLEAN_INTEREST_FIELD_NAMES]
+/** Which Beehiiv boolean field (if any) a selected chip maps to. */
+function booleanFieldForChip(chip: string): string | undefined {
+  const n = chip.trim().toLowerCase()
+  if (!n) return undefined
+  const fromAlias = BOOLEAN_CHIP_ALIASES[n]
+  if (fromAlias) return fromAlias
+  return BOOLEAN_FIELD_BY_NORMALIZED.get(n)
 }
 
-function selectedNetworksNormalized(payload: SubscribePayload): Set<string> {
-  return new Set(
-    payload.subscribed_networks.map((s) => s.trim().toLowerCase()).filter(Boolean)
-  )
+/** Set of Beehiiv boolean field names that should be true for this payload. */
+function selectedBooleanFieldNames(payload: SubscribePayload): Set<string> {
+  const on = new Set<string>()
+  for (const chip of payload.subscribed_networks) {
+    const field = booleanFieldForChip(chip)
+    if (field) on.add(field)
+  }
+  return on
 }
 
-/** One `{ name, value: true|false }` per Beehiiv boolean field — names must match dashboard. */
-function buildBooleanInterestCustomFields(payload: SubscribePayload): BeehiivCustomFieldRow[] {
-  if (!parseBoolEnv(process.env.BEEHIIV_INTERESTS_AS_BOOLEAN_CUSTOM_FIELDS, true)) {
-    return []
+/**
+ * Full custom_fields payload for create/PUT. Sends explicit booleans for every
+ * network field so segments stay consistent; optional text/list only when we have values.
+ */
+function buildBeehiivCustomFields(payload: SubscribePayload): BeehiivCustomFieldRow[] {
+  const out: BeehiivCustomFieldRow[] = []
+
+  const subscriberName = [payload.first_name, payload.last_name].filter(Boolean).join(" ").trim()
+  if (subscriberName) {
+    out.push({ name: "Subscriber Name", value: subscriberName })
   }
-  const selected = selectedNetworksNormalized(payload)
-  return booleanInterestFieldNames().map((fieldName) => ({
-    name: fieldName,
-    value: selected.has(fieldName.trim().toLowerCase()),
-  }))
+
+  // Beehiiv has no separate “Role” field; store the form role in the free-text Company slot.
+  const role = payload.role?.trim()
+  if (role) {
+    out.push({ name: "Company", value: role })
+  }
+
+  // `Events` is not collected on this form; keep a stable default for new + duplicate flows.
+  out.push({ name: "Events", value: false })
+
+  const newsletterValues = [
+    ...new Set(payload.subscribed_networks.map((s) => s.trim()).filter(Boolean)),
+  ]
+  if (newsletterValues.length > 0) {
+    out.push({ name: "Newsletters", value: newsletterValues })
+  }
+
+  const selectedBooleans = selectedBooleanFieldNames(payload)
+  for (const fieldName of BOOLEAN_NETWORK_FIELD_NAMES) {
+    out.push({ name: fieldName, value: selectedBooleans.has(fieldName) })
+  }
+
+  return out
 }
 
 async function safeJson(res: Response): Promise<unknown> {
@@ -111,11 +124,6 @@ async function safeJson(res: Response): Promise<unknown> {
 function parseBoolEnv(v: string | undefined, defaultVal: boolean): boolean {
   if (v === undefined || v === "") return defaultVal
   return v === "1" || v.toLowerCase() === "true"
-}
-
-function networkTagsFromPayload(payload: SubscribePayload): string[] {
-  const raw = payload.subscribed_networks.map((t) => t.trim()).filter(Boolean)
-  return [...new Set(raw)]
 }
 
 async function addSubscriptionTags(
@@ -171,7 +179,7 @@ async function putSubscriptionCustomFields(
   subscriptionId: string,
   payload: SubscribePayload
 ): Promise<void> {
-  const custom_fields = buildCustomFields(payload)
+  const custom_fields = buildBeehiivCustomFields(payload)
   if (custom_fields.length === 0) return
   const res = await fetch(
     `${BEEHIIV_API_URL}/publications/${publicationId}/subscriptions/${subscriptionId}`,
@@ -191,7 +199,7 @@ async function putSubscriptionCustomFields(
   }
 }
 
-/** Tags = optional; dynamic segments often use boolean CFs (see buildBooleanInterestCustomFields). */
+/** Optional: POST …/tags after create — off unless `BEEHIIV_APPLY_NETWORK_TAGS=true`. */
 async function applyInterestTags(
   apiKey: string,
   publicationId: string,
@@ -199,7 +207,7 @@ async function applyInterestTags(
   payload: SubscribePayload
 ): Promise<void> {
   if (!parseBoolEnv(process.env.BEEHIIV_APPLY_NETWORK_TAGS, false)) return
-  const tags = networkTagsFromPayload(payload)
+  const tags = [...new Set(payload.subscribed_networks.map((t) => t.trim()).filter(Boolean))]
   if (tags.length === 0) return
   const tagRes = await addSubscriptionTags(apiKey, publicationId, subscriptionId, tags)
   if (!tagRes.ok) {
@@ -229,38 +237,6 @@ export async function resolvePublicationId(apiKey: string): Promise<string> {
   return id
 }
 
-function buildCustomFields(payload: SubscribePayload): BeehiivCustomFieldRow[] {
-  const out: BeehiivCustomFieldRow[] = []
-  const booleanMode = parseBoolEnv(process.env.BEEHIIV_INTERESTS_AS_BOOLEAN_CUSTOM_FIELDS, true)
-
-  const fullNameField = process.env.BEEHIIV_CUSTOM_FIELD_FULL_NAME?.trim()
-  const roleField = process.env.BEEHIIV_CUSTOM_FIELD_ROLE?.trim()
-  const networksField = process.env.BEEHIIV_CUSTOM_FIELD_NETWORKS?.trim()
-
-  const full = [payload.first_name, payload.last_name].filter(Boolean).join(" ").trim()
-  if (fullNameField && full) out.push({ name: fullNameField, value: full })
-  if (roleField && payload.role) out.push({ name: roleField, value: payload.role })
-
-  // Legacy: one text/list custom field for all networks (only if not using per-network booleans).
-  if (!booleanMode && networksField && payload.subscribed_networks.length > 0) {
-    const segmentsToPush = new Set<string>()
-    for (const network of payload.subscribed_networks) {
-      if (VALID_BEEHIIV_SEGMENTS.has(network)) {
-        segmentsToPush.add(network)
-      } else {
-        segmentsToPush.add("Token Relations")
-      }
-    }
-    const values = Array.from(segmentsToPush)
-    if (values.length > 0) {
-      out.push({ name: networksField, value: values.join(", ") })
-    }
-  }
-
-  out.push(...buildBooleanInterestCustomFields(payload))
-  return out
-}
-
 export type BeehiivSyncResult = { ok: true; duplicate?: boolean } | { ok: false; status: number; detail: unknown }
 
 export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promise<BeehiivSyncResult> {
@@ -281,7 +257,7 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
     }
   }
 
-  const custom_fields = buildCustomFields(payload)
+  const custom_fields = buildBeehiivCustomFields(payload)
 
   const requestBody: Record<string, unknown> = {
     email: payload.email,
@@ -290,9 +266,6 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
   }
 
   if (custom_fields.length > 0) requestBody.custom_fields = custom_fields
-
-  // Tags / "segments": not on this body — apply via POST .../subscriptions/{id}/tags
-  // after create (see applyInterestTags).
 
   const utm = process.env.BEEHIIV_UTM_SOURCE?.trim()
   if (utm) requestBody.utm_source = utm
