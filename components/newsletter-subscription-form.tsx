@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import Image from "next/image"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -26,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import type { SubscribeNetworkOption } from "@/lib/subscribe-page-config"
+import { resolveNetworkLogoSrc, type SubscribeNetworkOption } from "@/lib/subscribe-page-config"
 
 const DEFAULT_NETWORKS: SubscribeNetworkOption[] = [
   { name: "Aptos", logo: "/Aptos.png" },
@@ -75,33 +74,6 @@ const FormSchema = z.object({
   }),
 })
 
-function resolveLogoSrc(logo: string | undefined, logoOrigin?: string): string | undefined {
-  if (!logo) return undefined
-  if (logo.startsWith("http://") || logo.startsWith("https://")) return logo
-  if (logoOrigin?.trim()) {
-    const base = logoOrigin.replace(/\/$/, "")
-    const path = logo.startsWith("/") ? logo : `/${logo}`
-    return `${base}${path}`
-  }
-  return logo
-}
-
-function NetworkLogo({
-  src,
-  alt,
-  isSelected,
-}: {
-  src: string
-  alt: string
-  isSelected: boolean
-}) {
-  const cls = `w-5 h-5 object-contain rounded-sm shrink-0 ${isSelected ? "brightness-0 invert" : ""}`
-  if (src.startsWith("http://") || src.startsWith("https://")) {
-    return <Image src={src} alt={alt} width={20} height={20} className={cls} unoptimized />
-  }
-  return <img src={src} alt={alt} width={20} height={20} className={cls} />
-}
-
 interface NewsletterSubscriptionFormProps {
   roles?: string[]
   networks?: SubscribeNetworkOption[]
@@ -109,7 +81,8 @@ interface NewsletterSubscriptionFormProps {
   successBody?: string
   ctaText?: string
   privacyText?: string
-  logoOrigin?: string
+  /** Prefix for relative `/logo.png` paths (e.g. main site origin). */
+  logoCdnOrigin?: string
 }
 
 export function NewsletterSubscriptionForm({
@@ -119,7 +92,7 @@ export function NewsletterSubscriptionForm({
   successBody = "Welcome to a community of 130,000+ readers across venture capital, institutional finance, protocol teams, and market professionals.",
   ctaText = "Subscribe",
   privacyText = "We respect your privacy. Unsubscribe at any time.",
-  logoOrigin,
+  logoCdnOrigin = "",
 }: NewsletterSubscriptionFormProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
@@ -154,7 +127,14 @@ export function NewsletterSubscriptionForm({
       })
 
       if (!response.ok) {
-        throw new Error("Failed to subscribe")
+        let msg = "Something went wrong. Please try again."
+        try {
+          const errBody = (await response.json()) as { detail?: unknown; error?: string }
+          if (typeof errBody.error === "string") msg = errBody.error
+        } catch {
+          /* ignore */
+        }
+        throw new Error(msg)
       }
 
       setSuccess(true)
@@ -163,10 +143,10 @@ export function NewsletterSubscriptionForm({
         description: "You have successfully subscribed to the selected newsletters.",
       })
       form.reset()
-    } catch {
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Something went wrong. Please try again.",
+        description: error instanceof Error ? error.message : "Something went wrong. Please try again.",
         variant: "destructive",
       })
     } finally {
@@ -279,7 +259,7 @@ export function NewsletterSubscriptionForm({
                   <div className="flex flex-wrap gap-2.5">
                     {networks.map((network) => {
                       const isSelected = field.value?.includes(network.name)
-                      const logoSrc = resolveLogoSrc(network.logo, logoOrigin)
+                      const src = resolveNetworkLogoSrc(network.logo, logoCdnOrigin)
                       return (
                         <button
                           key={network.name}
@@ -301,9 +281,16 @@ export function NewsletterSubscriptionForm({
                             }
                           `}
                         >
-                          {logoSrc && (
-                            <NetworkLogo src={logoSrc} alt={network.name} isSelected={!!isSelected} />
-                          )}
+                          {src ? (
+                            <img
+                              src={src}
+                              alt={network.name}
+                              width={20}
+                              height={20}
+                              className={`w-5 h-5 object-contain rounded-sm flex-shrink-0 ${isSelected ? "brightness-0 invert" : ""}`}
+                              loading="lazy"
+                            />
+                          ) : null}
                           {network.name}
                         </button>
                       )

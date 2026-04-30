@@ -3,7 +3,7 @@ export interface SubscribeNetworkOption {
   logo?: string
 }
 
-export interface SubscribePageCopy {
+export interface SubscribePageConfig {
   heroTitle: string
   heroSubtitle: string
   formTitle: string
@@ -16,7 +16,7 @@ export interface SubscribePageCopy {
   networks: SubscribeNetworkOption[]
 }
 
-export const DEFAULT_SUBSCRIBE_COPY: SubscribePageCopy = {
+export const DEFAULT_SUBSCRIBE_PAGE_CONFIG: SubscribePageConfig = {
   heroTitle: "Stay Ahead as Markets Move",
   heroSubtitle: "Subscribe to receive investor updates and insights directly in your inbox.",
   formTitle: "Newsletter Sign Up",
@@ -59,4 +59,40 @@ export const DEFAULT_SUBSCRIBE_COPY: SubscribePageCopy = {
     { name: "Talking Tokens", logo: "/TalkingTokens.jpg" },
     { name: "Tokenization" },
   ],
+}
+
+/** Client-safe: reads NEXT_PUBLIC_* inlined at build. */
+export function getClientPublicSubscribeConfig(): SubscribePageConfig {
+  const base = DEFAULT_SUBSCRIBE_PAGE_CONFIG
+  return {
+    ...base,
+    heroTitle: process.env.NEXT_PUBLIC_HERO_TITLE?.trim() || base.heroTitle,
+    heroSubtitle: process.env.NEXT_PUBLIC_HERO_SUBTITLE?.trim() || base.heroSubtitle,
+    formTitle: process.env.NEXT_PUBLIC_FORM_TITLE?.trim() || base.formTitle,
+    formSubtitle: process.env.NEXT_PUBLIC_FORM_SUBTITLE?.trim() || base.formSubtitle,
+    successTitle: process.env.NEXT_PUBLIC_SUCCESS_TITLE?.trim() || base.successTitle,
+    successBody: process.env.NEXT_PUBLIC_SUCCESS_BODY?.trim() || base.successBody,
+    ctaText: process.env.NEXT_PUBLIC_CTA_TEXT?.trim() || base.ctaText,
+    privacyText: process.env.NEXT_PUBLIC_PRIVACY_TEXT?.trim() || base.privacyText,
+  }
+}
+
+export function getEmbedHeaderCopy(): { title: string; subtitle: string } {
+  const baseTitle = DEFAULT_SUBSCRIBE_PAGE_CONFIG.heroTitle
+  const baseSubtitle = DEFAULT_SUBSCRIBE_PAGE_CONFIG.heroSubtitle
+  return {
+    title: process.env.NEXT_PUBLIC_EMBED_TITLE?.trim() || baseTitle,
+    subtitle: process.env.NEXT_PUBLIC_EMBED_SUBTITLE?.trim() || baseSubtitle,
+  }
+}
+
+export function getLogoCdnOrigin(): string {
+  return process.env.NEXT_PUBLIC_LOGO_CDN_ORIGIN?.replace(/\/$/, "") || ""
+}
+
+export function resolveNetworkLogoSrc(logo: string | undefined, logoCdnOrigin: string): string | undefined {
+  if (!logo) return undefined
+  if (logo.startsWith("http://") || logo.startsWith("https://")) return logo
+  if (logoCdnOrigin && logo.startsWith("/")) return `${logoCdnOrigin}${logo}`
+  return logo
 }
