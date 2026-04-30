@@ -1,5 +1,13 @@
 const BEEHIIV_API_URL = "https://api.beehiiv.com/v2"
 
+/**
+ * Beehiiv does not accept `segment_id` on "Create subscription".
+ * Dynamic segments are rules (e.g. "has tag Solana"). Tags are applied via a
+ * separate endpoint after the subscription exists:
+ * POST /v2/publications/{pub}/subscriptions/{subId}/tags — tags are created on
+ * the publication if missing (see Subscription Tags API).
+ */
+
 const VALID_BEEHIIV_SEGMENTS = new Set([
   "Token Relations",
   "Solana",
@@ -46,6 +54,74 @@ async function safeJson(res: Response): Promise<unknown> {
 function parseBoolEnv(v: string | undefined, defaultVal: boolean): boolean {
   if (v === undefined || v === "") return defaultVal
   return v === "1" || v.toLowerCase() === "true"
+}
+
+function networkTagsFromPayload(payload: SubscribePayload): string[] {
+  const raw = payload.subscribed_networks.map((t) => t.trim()).filter(Boolean)
+  return [...new Set(raw)]
+}
+
+async function addSubscriptionTags(
+  apiKey: string,
+  publicationId: string,
+  subscriptionId: string,
+  tags: string[]
+): Promise<{ ok: true } | { ok: false; status: number; detail: unknown }> {
+  if (tags.length === 0) return { ok: true }
+  const res = await fetch(
+    `${BEEHIIV_API_URL}/publications/${publicationId}/subscriptions/${subscriptionId}/tags`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ tags }),
+    }
+  )
+  if (res.ok) return { ok: true }
+  return { ok: false, status: res.status, detail: await safeJson(res) }
+}
+
+async function getSubscriptionIdByEmail(
+  apiKey: string,
+  publicationId: string,
+  email: string
+): Promise<string | null> {
+  const encoded = encodeURIComponent(email)
+  const res = await fetch(
+    `${BEEHIIV_API_URL}/publications/${publicationId}/subscriptions/by_email/${encoded}`,
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    }
+  )
+  if (!res.ok) return null
+  try {
+    const body = (await res.json()) as { data?: { id?: string } }
+    return body.data?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Tags = what Beehiiv uses for grouping; dynamic segments often key off tags. */
+async function applyInterestTags(
+  apiKey: string,
+  publicationId: string,
+  subscriptionId: string,
+  payload: SubscribePayload
+): Promise<void> {
+  if (!parseBoolEnv(process.env.BEEHIIV_APPLY_NETWORK_TAGS, true)) return
+  const tags = networkTagsFromPayload(payload)
+  if (tags.length === 0) return
+  const tagRes = await addSubscriptionTags(apiKey, publicationId, subscriptionId, tags)
+  if (!tagRes.ok) {
+    console.error("Beehiiv add subscription tags failed:", tagRes.status, tagRes.detail)
+  }
 }
 
 export async function resolvePublicationId(apiKey: string): Promise<string> {
@@ -128,9 +204,8 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
 
   if (custom_fields.length > 0) requestBody.custom_fields = custom_fields
 
-  // Do NOT send `tags` here — Beehiiv "Create subscription" (POST .../subscriptions)
-  // OpenAPI schema does not include `tags` on the request. Sending it causes 400s
-  // that were previously surfaced as 502 due to status mapping below.
+  // Tags / "segments": not on this body — apply via POST .../subscriptions/{id}/tags
+  // after create (see applyInterestTags).
 
   const utm = process.env.BEEHIIV_UTM_SOURCE?.trim()
   if (utm) requestBody.utm_source = utm
@@ -159,6 +234,13 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
   })
 
   if (res.ok) {
+    const created = (await res.json()) as { data?: { id?: string } }
+    const subscriptionId = created.data?.id
+    if (subscriptionId) {
+      await applyInterestTags(apiKey, publicationId, subscriptionId, payload)
+    } else {
+      console.error("Beehiiv create subscription: missing data.id in response", created)
+    }
     await postSubscribeMirrorWebhook(payload)
     return { ok: true }
   }
@@ -171,6 +253,10 @@ export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promis
   }
 
   if (isLikelyDuplicateResponse(res.status, detail)) {
+    const existingId = await getSubscriptionIdByEmail(apiKey, publicationId, payload.email)
+    if (existingId) {
+      await applyInterestTags(apiKey, publicationId, existingId, payload)
+    }
     await postSubscribeMirrorWebhook(payload)
     return { ok: true, duplicate: true }
   }
