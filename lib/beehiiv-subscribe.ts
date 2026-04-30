@@ -1,5 +1,19 @@
 const BEEHIIV_API_URL = "https://api.beehiiv.com/v2"
 
+/** Trim, strip UTF-8 BOM, and remove accidental wrapping quotes from pasted env values. */
+export function getBeehiivApiKey(): string | undefined {
+  const raw = process.env.BEEHIIV_API_KEY
+  if (raw === undefined || raw === "") return undefined
+  let v = raw.trim().replace(/^\uFEFF/, "")
+  if (
+    (v.startsWith('"') && v.endsWith('"')) ||
+    (v.startsWith("'") && v.endsWith("'"))
+  ) {
+    v = v.slice(1, -1).trim()
+  }
+  return v || undefined
+}
+
 /**
  * Maps the subscribe form to your publication’s custom fields using only
  * `BEEHIIV_API_KEY` + `BEEHIIV_PUBLICATION_ID` (field names match the Beehiiv dashboard).
@@ -240,7 +254,7 @@ export async function resolvePublicationId(apiKey: string): Promise<string> {
 export type BeehiivSyncResult = { ok: true; duplicate?: boolean } | { ok: false; status: number; detail: unknown }
 
 export async function syncSubscriberToBeehiiv(payload: SubscribePayload): Promise<BeehiivSyncResult> {
-  const apiKey = process.env.BEEHIIV_API_KEY?.trim()
+  const apiKey = getBeehiivApiKey()
   if (!apiKey) {
     return { ok: false, status: 503, detail: { error: "BEEHIIV_API_KEY is not configured" } }
   }

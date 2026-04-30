@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { syncSubscriberToBeehiiv } from "@/lib/beehiiv-subscribe"
+import { getBeehiivApiKey, syncSubscriberToBeehiiv } from "@/lib/beehiiv-subscribe"
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -12,7 +12,7 @@ const bodySchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const apiKey = process.env.BEEHIIV_API_KEY?.trim()
+  const apiKey = getBeehiivApiKey()
   if (!apiKey) {
     return NextResponse.json(
       { error: "Server misconfigured", detail: "BEEHIIV_API_KEY is not set." },
@@ -59,7 +59,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, ignored: true })
     }
 
-    const status = result.status >= 400 && result.status < 600 ? result.status : 502
+    const upstream = result.status >= 400 && result.status < 600 ? result.status : 502
+
+    // Beehiiv returns 401/403 for bad or revoked keys — don’t forward as HTTP 401 on our route
+    // (browsers and embed tooling treat that as “this app requires login”).
+    if (upstream === 401 || upstream === 403) {
+      return NextResponse.json(
+        {
+          error:
+            "Beehiiv rejected the API key. In Vercel → Settings → Environment Variables, set BEEHIIV_API_KEY to the v2 API key from Beehiiv (app.beehiiv.com → Settings → API), then redeploy.",
+          detail: result.detail,
+        },
+        { status: 502 }
+      )
+    }
+
+    const status = upstream === 429 ? 503 : upstream >= 500 ? 502 : upstream
     return NextResponse.json(
       { error: "Beehiiv request failed", detail: result.detail },
       { status }
